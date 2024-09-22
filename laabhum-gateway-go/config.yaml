@@ -1,0 +1,4 @@
+oms:
+  baseURL: "http://localhost:8081"  # Updated port
+log_level: "info"
+server_address: ":8080"
