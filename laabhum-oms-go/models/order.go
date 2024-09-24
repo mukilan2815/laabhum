@@ -6,19 +6,31 @@ import "time"
 type OrderType string
 type OrderStatus string
 type TradeStrategy string
+type PositionStatus string
 
 const (
     LimitOrder  OrderType = "LIMIT"
     MarketOrder OrderType = "MARKET"
     StopOrder   OrderType = "STOP"
 
-    OrderStatusPending   OrderStatus = "PENDING"
-    OrderStatusExecuted  OrderStatus = "EXECUTED"
-    OrderStatusCancelled OrderStatus = "CANCELLED"
+    OrderStatusPending   OrderStatus = "pending"
+
+    OrderStatusExecuted  OrderStatus = "executed"
+
+    OrderStatusCancelled OrderStatus = "cancelled"
+
+    OrderStatusDeleted   OrderStatus = "deleted"
 
     StrategyDayTrading     TradeStrategy = "DAY_TRADING"
     StrategyPositionTrading TradeStrategy = "POSITION_TRADING"
     StrategyScalping        TradeStrategy = "SCALPING"
+
+        PositionStatusOpen   PositionStatus = "open"
+
+    PositionStatusClosed PositionStatus = "closed"
+
+    CTCOrderType OrderType = "ctc" // Added CTCOrderType
+
 )
 
 // Order represents a general order with advanced trading attributes
@@ -33,10 +45,12 @@ type Order struct {
     StopPrice     float64       `json:"stop_price,omitempty"` // Stop Order Price (optional)
     Strategy      TradeStrategy `json:"strategy"` // Trading strategy (e.g. scalping, day trading)
     RiskPercentage float64      `json:"risk_percentage"` // % of capital risked
-    StopLoss      float64       `json:"stop_loss"` // Stop loss level
+    StopLossActivated bool // Add this field
     TakeProfit    float64       `json:"take_profit"` // Take profit level
     CreatedAt     int64         `json:"created_at"` // Timestamp for when the order is created
     ExpiresAt     time.Time     `json:"expires_at,omitempty"` // Optional expiry time for order
+        ParentID  string // Add ParentID field
+
 }
 
 // Position represents an open position in the market
@@ -52,6 +66,26 @@ type Position struct {
     Strategy      TradeStrategy `json:"strategy"` // Associated trading strategy
     OpenedAt      time.Time     `json:"opened_at"` // Time when the position was opened
     LastUpdatedAt time.Time     `json:"last_updated_at"` // Last update timestamp for price/stop loss
+        Status       string // Add this line
+
+}
+type CTCOrder struct {
+
+    ID        string  `json:"id"`
+
+    ParentID  string  `json:"parent_id"`
+
+    Quantity  int     `json:"quantity"`
+
+    Price     float64 `json:"price"`
+
+    OrderType string  `json:"order_type"`
+
+    Symbol    string
+
+    CreatedAt int64
+
+
 }
 
 // MarketCondition provides real-time or historical market data

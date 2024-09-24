@@ -10,13 +10,23 @@ import (
 	"github.com/google/uuid"
 )
 
+
 type Order struct {
-    ID        string
-    Symbol    string
-    Status    models.OrderStatus
-    Strategy  models.TradeStrategy
-    CreatedAt time.Time
-trades           map[string][]models.Trade
+    ID                string        `json:"id"`
+    Symbol            string        `json:"symbol"`
+    Quantity          int           `json:"quantity"`
+    Price             float64       `json:"price"`
+    Side              string        `json:"side"` // "buy" or "sell"
+    Type              models.OrderType     `json:"type"` // LIMIT, MARKET, STOP
+    Status            models.OrderStatus   `json:"status"` // PENDING, EXECUTED, CANCELLED
+    StopPrice         float64       `json:"stop_price,omitempty"` // Stop Order Price (optional)
+    Strategy          models.TradeStrategy `json:"strategy"` // Trading strategy (e.g. scalping, day trading)
+    RiskPercentage    float64       `json:"risk_percentage"` // % of capital risked
+    StopLossActivated bool          `json:"stop_loss_activated"` // Add this field
+    TakeProfit        float64       `json:"take_profit"` // Take profit level
+    CreatedAt         int64         `json:"created_at"` // Timestamp for when the order is created
+    ExpiresAt         time.Time     `json:"expires_at,omitempty"` // Optional expiry time for order
+    ParentID          string        `json:"parent_id"` // Add ParentID field
 }
 
 func (r *InMemoryOrderRepository) GetTrades(parentID string) ([]models.Trade, error) {
@@ -25,6 +35,29 @@ func (r *InMemoryOrderRepository) GetTrades(parentID string) ([]models.Trade, er
 		return nil, nil // or return an error if needed
 	}
 	return trades, nil
+}
+func (f OrderFilter) Matches(order models.Order) bool {
+
+    if f.Symbol != "" && f.Symbol != order.Symbol {
+
+        return false
+
+    }
+
+    if f.Status != "" && f.Status != order.Status {
+
+        return false
+
+    }
+
+    if f.ParentID != "" && f.ParentID != order.ParentID {
+
+        return false
+
+    }
+
+    return true
+
 }
 
 type OrderRepository interface {
@@ -41,7 +74,7 @@ type OrderRepository interface {
     GetTrades(parentID string) ([]models.Trade, error)
     SaveMarketCondition(condition models.MarketCondition) error
     GetLatestMarketCondition(symbol string) (*models.MarketCondition, error)
-        GetOrders(filter OrderFilter) ([]models.Order, error)
+    GetOrders(filter OrderFilter) ([]Order, error) // Adjust this based on your actual Order struct
     CreateOrder(order models.Order) (models.Order, error)
     ExecuteChildOrder(orderID string) error // Add this method signature
 
@@ -65,6 +98,7 @@ type OrderFilter struct {
     Strategy models.TradeStrategy
     FromDate time.Time
     ToDate   time.Time
+    ParentID string // Add ParentID field
 }
 
 type InMemoryOrderRepository struct {
@@ -73,6 +107,7 @@ type InMemoryOrderRepository struct {
     marketConditions map[string]*models.MarketCondition
     trades           map[string][]models.Trade
     mutex            sync.RWMutex
+    StopLossActivated bool
 }
 
 func NewInMemoryOrderRepository() *InMemoryOrderRepository {
@@ -83,6 +118,7 @@ func NewInMemoryOrderRepository() *InMemoryOrderRepository {
         trades:           make(map[string][]models.Trade),
     }
 }
+
 
 func (r *InMemoryOrderRepository) SaveOrder(order map[string]interface{}) error {
     r.mutex.Lock()
@@ -148,19 +184,29 @@ func (r *InMemoryOrderRepository) UpdateOrder(order models.Order) error {
     r.orders[order.ID] = &order
     return nil
 }
-
-func (r *InMemoryOrderRepository) GetOrders(filter OrderFilter) ([]models.Order, error) {
+func (r *InMemoryOrderRepository) GetOrders(filter OrderFilter) ([]Order, error) {
     r.mutex.RLock()
     defer r.mutex.RUnlock()
 
-    var orders []models.Order
+    var orders []Order
     for _, order := range r.orders {
-        if r.orderMatchesFilter(order, filter) {
-            orders = append(orders, *order)
+        if filter.Matches(*order) {
+            orders = append(orders, Order{
+                ID:                order.ID,
+                Symbol:            order.Symbol,
+                Quantity:          order.Quantity,
+                Price:             order.Price,
+                Type:              order.Type,
+                Status:            order.Status, // Ensure models.OrderStatus is used directly
+                CreatedAt:         order.CreatedAt,
+                StopLossActivated: order.StopLossActivated, // Ensure models.Order has StopLossActivated field
+                ParentID:          order.ParentID,
+            })
         }
     }
     return orders, nil
 }
+
 
 func (r *InMemoryOrderRepository) orderMatchesFilter(order *models.Order, filter OrderFilter) bool {
     if filter.Symbol != "" && order.Symbol != filter.Symbol {

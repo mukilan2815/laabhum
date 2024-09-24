@@ -1,54 +1,59 @@
 package routes
 
 import (
-	"encoding/json"
-	"net/http"
-
-	"github.com/Mukilan-T/laabhum-gateway-go/api" // Import the api package
-	"github.com/Mukilan-T/laabhum-gateway-go/config"
+	"github.com/Mukilan-T/laabhum-gateway-go/api"
 	"github.com/Mukilan-T/laabhum-gateway-go/internal/oms"
 	"github.com/Mukilan-T/laabhum-gateway-go/pkg/logger"
-	"github.com/gorilla/mux"
+    "github.com/gin-gonic/gin"
+    "net/http"
 )
 
-func SetupRoutes(cfg *config.Config, logger *logger.Logger, omsClient *oms.Client) *mux.Router {
-	router := mux.NewRouter()
+func SetupRoutes(logger *logger.Logger, omsClient *oms.Client) *gin.Engine {
+	router := gin.Default()
+	handlers := api.NewHandlers(logger, omsClient)
+router.GET("/", func(c *gin.Context) {
+    c.JSON(http.StatusOK, gin.H{"message": "Server is running"})
+})
 
-	router.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			ordersData, err := omsClient.GetOrders()
-			if err != nil {
-				logger.Errorf("Failed to get orders: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(ordersData)	
-			return
-		}
-		if r.Method == http.MethodPost {
-			var order oms.Order
-			if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
-				logger.Errorf("Failed to decode order: %v", err)
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			createdOrder, err := omsClient.CreateOrder(order)
-			if err != nil {
-				logger.Errorf("Failed to create order: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(createdOrder)
-		}
-	}).Methods(http.MethodGet, http.MethodPost)
+	// Scalper Order Routes
+	router.POST("/oms/scalper/order", handlers.CreateScalperOrder)
+	router.POST("/oms/scalper/order/:parentID/execute", handlers.ExecuteAllChildTrades)
+	router.POST("/oms/scalper/order/:parentID/:childID/execute", handlers.ExecuteSpecificChild)
+	router.POST("/oms/scalper/order/:parentID/ctc", handlers.CreateCTC)
+	router.PATCH("/oms/scalper/order/:orderType/:parentID/modify", handlers.ModifyOrder)
+	router.PATCH("/oms/scalper/order/:orderType/:parentID/:childID/modify", handlers.ModifyChildOrder)
 
-	// Adding the new route from the second snippet
-	router.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
-		handler := api.CreateOrderHandler(cfg, omsClient)
-		handler(w, r)
-	}).Methods("POST")
+	// Exit Trade Routes
+	router.POST("/oms/scalper/exit/trade", handlers.ExitAllTrades)
+	router.POST("/oms/scalper/trade/:parentID/exit", handlers.ExitChildTrades)
+	router.POST("/oms/scalper/trade/:parentID/:childID/exit", handlers.ExitSpecificChild)
 
-	return router
+    // Cancel all child orders
+    router.POST("/oms/scalper/order/:parentID/child/:childID/cancel", handlers.CancelSpecificChildOrder)
+    router.POST("/oms/scalper/order/:parentID/order/:orderID/cancel", handlers.CancelSpecificOrder)
+
+    // Get trades for a specific parent order
+    router.GET("/oms/scalper/trades/:parentID", handlers.GetTrades)
+
+    // Delete a parent order
+    router.DELETE("/oms/scalper/order/:parentID", handlers.DeleteParentOrder)
+
+    // Activate and cancel stop loss for child orders
+    router.PATCH("/oms/scalper/order/sl/:parentID/:childID/active", handlers.ActivateStopLoss)
+    router.PATCH("/oms/scalper/order/sl/:parentID/:childID/cancel", handlers.CancelStopLoss)
+
+    // General Order Routes
+    router.GET("/oms/orders", handlers.GetOrders)
+    router.PUT("/oms/order", handlers.CreateOrder)
+    router.POST("/oms/order/execute", handlers.ExecuteOrder)
+    router.DELETE("/oms/order/cancel", handlers.CancelOrder)
+
+    // Position Routes
+    router.GET("/oms/positions", handlers.SyncPositions)
+    router.GET("/oms/position/sync", handlers.SyncPositions)
+    router.PUT("/oms/position/convert", handlers.SyncPositions)
+    router.POST("/oms/position/order", handlers.CreateOrder)
+    router.DELETE("/oms/position/order", handlers.CancelOrder)
+
+    return router
 }
